@@ -27,7 +27,7 @@ let hit = false;
 let squarePosition = 0;
 let squareSpeed = 0.00045;
 
-let pendulumAngle = 0.35;
+let pendulumAngle = 0.34;
 let pendulumSpeed = 0;
 let pendulumGravity = 0.001;
 
@@ -90,7 +90,7 @@ function draw() {
   let pivotX = width * 0.82;
   let pivotY = height * 0.15;
 
-  let pendulumLength = 600;
+  let pendulumLength = 750;
 
   // 추의 위치
   let pendulumX = pivotX + sin(pendulumAngle) * pendulumLength;
