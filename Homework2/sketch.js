@@ -43,23 +43,28 @@ function setup() {
   }
 
   // 먼지3
+
   for (let i = 0; i < 24; i++) {
     let windowX = width * 0.67;
     let windowW = (width - 120) * 0.6;
     let x;
     let y;
     let valid = false;
-    while (!valid) {
+    let attempts = 0;
+
+    while (!valid && attempts < 100) {
       x = random(windowX - windowW / 2 + 20, windowX + windowW / 2 - 20);
       y = height * 0.42 + 190 + random(-3, 3);
       valid = true;
       for (let d of dusts3) {
         let distance = dist(x, y, d.body.position.x, d.body.position.y);
-        if (distance < 15) {
+        if (distance < 10) {
           valid = false;
           break;
         }
       }
+
+      attempts++;
     }
     let size = random(4, 8);
     dusts3.push(new Dust(x, y, size));
