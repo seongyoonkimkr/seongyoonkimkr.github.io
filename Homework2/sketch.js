@@ -54,7 +54,9 @@ function setup() {
 
     while (!valid && attempts < 100) {
       x = random(windowX - windowW / 2 + 20, windowX + windowW / 2 - 20);
-      y = height * 0.42 + 190 + random(-3, 3);
+      let windowY = height * 0.42;
+      let windowH = height * 0.55;
+      y = windowY + windowH * 0.41 + random(-3, 3);
       valid = true;
       for (let d of dusts3) {
         let distance = dist(x, y, d.body.position.x, d.body.position.y);
@@ -396,7 +398,7 @@ function drawWindow() {
   let windowX = width * 0.67;
   let windowY = height * 0.42;
   let windowW = (width - 120) * 0.6;
-  let windowH = windowW * 0.65;
+  let windowH = height * 0.55;
 
   // 창틀 전체
   fill("#3e1921");
