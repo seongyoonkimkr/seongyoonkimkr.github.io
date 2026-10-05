@@ -395,7 +395,6 @@ function drawWindow() {
   // 창의 위치와 크기
   let windowX = width * 0.67;
   let windowY = height * 0.42;
-
   let windowW = (width - 120) * 0.6;
   let windowH = windowW * 0.9;
 
@@ -405,19 +404,19 @@ function drawWindow() {
 
   // 창 안쪽
   fill("#dddddd");
-  rect(windowX, windowY - 10, windowW - 40, 340);
+  rect(windowX, windowY - windowH * 0.02, windowW - 40, windowH * 0.77);
 
   // 십자 창틀 - 세로
   fill("#3e1921");
-  rect(windowX, windowY - 10, 18, 340);
+  rect(windowX, windowY - windowH * 0.02, 18, windowH * 0.77);
 
   // 십자 창틀 - 가로
   fill("#3e1921");
-  rect(windowX, windowY - 10, windowW - 40, 18);
+  rect(windowX, windowY - windowH * 0.02, windowW - 40, 18);
 
   // 창틀 아랫변
   fill("#bab076");
-  rect(windowX, windowY + 180, windowW, 45);
+  rect(windowX, windowY + windowH * 0.41, windowW, windowH * 0.1);
 }
 
 function drawNextButton() {
