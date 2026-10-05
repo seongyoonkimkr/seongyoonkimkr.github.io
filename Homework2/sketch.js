@@ -396,7 +396,7 @@ function drawWindow() {
   let windowX = width * 0.67;
   let windowY = height * 0.42;
   let windowW = (width - 120) * 0.6;
-  let windowH = windowW * 0.9;
+  let windowH = windowW * 1.25;
 
   // 창틀 전체
   fill("#3e1921");
