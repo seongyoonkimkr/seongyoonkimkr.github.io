@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+
+    <!-- 모바일 화면 설정 -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no"
+    />
+
+    <title>MEMO</title>
+
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
+
+      /* 모바일 터치 및 선택 방지 */
+      body {
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+      }
+
+      canvas {
+        display: block;
+        touch-action: none;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- 모바일 Safari의 스크롤 방지 -->
+    <script>
+      document.addEventListener(
+        "touchmove",
+        function (e) {
+          e.preventDefault();
+        },
+        { passive: false },
+      );
+    </script>
+
+    <!-- 1. p5.js -->
+    <script src="https://cdn.jsdelivr.net/npm/p5@2/lib/p5.min.js"></script>
+
+    <!-- 2. Matter.js -->
+    <script src="https://cdn.jsdelivr.net/npm/matter-js@0.20.0/build/matter.min.js"></script>
+
+    <!-- 3. 작업 파일 -->
+    <script src="sketch.js"></script>
+  </body>
+</html>
