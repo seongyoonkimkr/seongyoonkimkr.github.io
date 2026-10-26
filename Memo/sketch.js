@@ -1594,45 +1594,50 @@ function drawHomeScreen() {
   background("#fafaf8");
 
   const centerX = width / 2;
+  const isSmallScreen = width < 700 || height < 650;
+
+  // 화면 크기에 따라 세로 위치와 여백 조절
+  const titleY = height * (isSmallScreen ? 0.22 : 0.28);
+  const guideY = height * (isSmallScreen ? 0.53 : 0.57);
+  const buttonY = height * (isSmallScreen ? 0.82 : 0.8);
 
   // 제목
   noStroke();
   fill("#231719");
   textAlign(CENTER, CENTER);
-
-  textSize(34);
+  textSize(isSmallScreen ? 30 : 34);
   textStyle(BOLD);
-  text("ROUTINE", centerX, height * 0.36);
+  text("ROUTINE", centerX, titleY);
   textStyle(NORMAL);
 
   // 소제목
   textSize(13);
   fill("#77716D");
-  text("건강한 루틴을 만드는 메모", centerX, height * 0.36 + 32);
+  text("건강한 루틴을 만드는 메모", centerX, titleY + 32);
 
   // 안내 문구
   fill("#231719");
-  textSize(14);
-  textLeading(28);
+  textSize(isSmallScreen ? 12 : 14);
+  textLeading(isSmallScreen ? 23 : 28);
 
   const guideText =
     "습관으로 만들고 싶은 행동을 메모로 입력합니다.\n" +
     "1. 메모가 바닥에 닿기 전에 행동을 실천하고 메모를 삭제합니다.\n" +
     "2. 메모를 삭제하기 위해서는 메모에 표시된 패턴을 똑같이 터치해야 합니다.";
 
-  const guideY = height * 0.65;
-  const guideH = 120;
+  const guideW = Math.min(width - 40, 700);
+  const guideH = isSmallScreen ? 110 : 120;
 
-  text(guideText, centerX, guideY, Math.min(width - 48, 700), guideH);
+  text(guideText, centerX, guideY, guideW, guideH);
 
   // 시작 버튼
-  const buttonY = height * 0.8;
-
   rectMode(CENTER);
+  noStroke();
   fill("#231719");
   rect(centerX, buttonY, 180, 54, 5);
 
   fill("#FFFFFF");
+  textAlign(CENTER, CENTER);
   textSize(16);
   text("시작", centerX, buttonY);
 
