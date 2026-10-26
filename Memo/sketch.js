@@ -63,7 +63,7 @@ const SIDE_MARGIN = 60;
 
 // 동작 조절
 // 루틴 한 묶음이 완료되는 데 걸리는 목표 시간
-const ROUTINE_DURATION_MS = 300000;
+const ROUTINE_DURATION_MS = 180000;
 
 // 메모의 계단식 이동 거리
 const STEP_SIZE = 18;
