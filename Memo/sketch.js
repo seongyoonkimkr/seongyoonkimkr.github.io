@@ -1189,9 +1189,9 @@ function addTouchMark(x, y, type) {
 function mousePressed() {
   // 1. 홈 화면의 시작 버튼
   if (screenMode === "home") {
-    const buttonX = width / 2;
     const isSmallScreen = width < 700 || height < 650;
-    const buttonY = height * (isSmallScreen ? 0.9 : 0.86);
+    const buttonX = width / 2;
+    const buttonY = height * 0.82;
     const buttonW = 180;
     const buttonH = 54;
 
@@ -1598,9 +1598,9 @@ function drawHomeScreen() {
   const isSmallScreen = width < 700 || height < 650;
 
   // 화면 크기에 따라 세로 위치와 여백 조절
-  const titleY = height * (isSmallScreen ? 0.22 : 0.28);
-  const guideY = height * (isSmallScreen ? 0.43 : 0.52);
-  const buttonY = height * (isSmallScreen ? 0.9 : 0.86);
+  const titleY = height * 0.3;
+  const guideY = height * 0.58;
+  const buttonY = height * 0.82;
 
   // 제목
   noStroke();
@@ -1612,24 +1612,25 @@ function drawHomeScreen() {
   textStyle(NORMAL);
 
   // 소제목
-  textSize(13);
+  textSize(15);
   fill("#77716D");
   text("건강한 루틴을 만드는 메모", centerX, titleY + 32);
 
   // 안내 문구
   fill("#231719");
-  textSize(isSmallScreen ? 12 : 14);
-  textLeading(isSmallScreen ? 23 : 28);
+  textSize(14);
+  textLeading(28);
+
+  const guideW = Math.min(width - 40, 700);
+  const guideH = 130;
+
+  textAlign(CENTER, CENTER);
+  text(guideText, centerX, guideY, guideW, guideH);
 
   const guideText =
     "습관으로 만들고 싶은 행동을 메모로 입력합니다.\n" +
     "1. 메모가 바닥에 닿기 전에 행동을 실천하고 메모를 삭제합니다.\n" +
     "2. 메모를 삭제하기 위해서는 메모에 표시된 패턴을 똑같이 터치해야 합니다.";
-
-  const guideW = Math.min(width - 40, 700);
-  const guideH = isSmallScreen ? 110 : 120;
-
-  text(guideText, centerX, guideY, guideW, guideH);
 
   // 시작 버튼
   rectMode(CENTER);
