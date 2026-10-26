@@ -19,9 +19,14 @@ let countInput;
 let addButton;
 
 let selectedMemo = null;
+let selectedMemoAt = 0;
 let isTouchingFloor = false;
 let touchStart = 0;
 let enteredPattern = "";
+let lastPatternInputAt = 0;
+let patternCompletedAt = 0;
+let completedPatternMemo = null;
+let completedPatternScreen = null;
 
 let nextPattern = 0;
 let nextLane = 0;
@@ -43,14 +48,13 @@ const PATTERNS = [
 
 const MAX_MEMOS = 30;
 const MAX_FRAGMENTS = 60;
-
 const RESET_SAVED_DATA_ON_START = false;
 
 // 메모 디자인
 const boxW = 180;
 const boxH = 100;
 const MEMO_START_GAP = 10;
-const STACK_GAP = 8;
+const STACK_GAP = 24;
 const SIDE_MARGIN = 60;
 
 // 동작 조절
@@ -69,6 +73,20 @@ let memoStartLine;
 
 let canvas;
 
+// 화면 전환
+let screenMode = "home"; // home, routine, archive
+
+// 보관함에 들어간 메모
+let archivedMemos = [];
+let selectedArchivedMemo = null;
+
+// 우측 상단 버튼 영역
+const NAV_BUTTON_W = 110;
+const NAV_BUTTON_H = 38;
+const NAV_GAP = 10;
+
+////////////////////////////////
+
 function setup() {
   canvas = createCanvas(windowWidth, windowHeight);
   canvas.position(0, 0);
@@ -83,6 +101,8 @@ function setup() {
   function setupInput(element, left, width) {
     element.position(left, 20);
     element.size(width, 28);
+    element.elt.style.boxSizing = "border-box";
+    element.elt.style.margin = "0";
 
     element.elt.style.position = "fixed";
     element.elt.style.zIndex = "10000";
@@ -102,18 +122,20 @@ function setup() {
   setupInput(taskInput, 20, 220);
 
   // 루틴 반복 횟수 입력창
-  countInput = createInput("3", "number");
+  countInput = createInput("1", "number");
   countInput.attribute("min", "1");
-  countInput.attribute("max", "30");
+  countInput.attribute("max", "10");
   countInput.attribute("step", "1");
   setupInput(countInput, 250, 65);
 
   // 루틴 추가 버튼
   addButton = createButton("루틴 추가");
   addButton.position(330, 20);
+  addButton.elt.style.minHeight = "28px";
   addButton.elt.style.position = "fixed";
   addButton.elt.style.zIndex = "10000";
   addButton.elt.style.pointerEvents = "auto";
+  addButton.elt.style.padding = "0";
   addButton.mousePressed(addRoutine);
   layoutTopControls();
 
@@ -128,20 +150,25 @@ function setup() {
   } else {
     loadMemos();
   }
+
+  updateTopControlsVisibility();
 }
 
 function layoutTopControls() {
   const groupWidth = 395;
-  const left = max(10, (width - groupWidth) / 2);
+  const left = Math.max(10, (width - groupWidth) / 2);
 
   taskInput.position(left, 20);
-  taskInput.size(220, 28);
+  taskInput.size(240, 40);
 
-  countInput.position(left + 230, 20);
-  countInput.size(65, 28);
+  countInput.position(left + 248, 20);
+  countInput.size(50, 40);
 
   addButton.position(left + 305, 20);
-  addButton.size(90, 28);
+  addButton.size(90, 40);
+  addButton.elt.style.boxSizing = "border-box";
+  addButton.elt.style.margin = "0";
+  addButton.elt.style.lineHeight = "normal";
 }
 
 function updateLayout() {
@@ -152,50 +179,139 @@ function updateLayout() {
 
 function addRoutine() {
   const txt = taskInput.value().trim();
-  const count = floor(Number(countInput.value()));
+  const count = Math.floor(Number(countInput.value()));
 
-  if (!txt || !Number.isFinite(count) || count < 1) return;
-
-  const pendingCount = routines.reduce((sum, r) => sum + r.remaining, 0);
-
-  if (memos.length + pendingCount + count > MAX_MEMOS) {
+  if (!txt) {
+    taskInput.elt.focus();
     return;
   }
 
-  routines.push({
+  if (!Number.isFinite(count) || count < 1) {
+    countInput.value("1");
+    return;
+  }
+
+  if (
+    memos.length + routines.reduce((sum, r) => sum + r.remaining, 0) + count >
+    MAX_MEMOS
+  ) {
+    console.warn("메모 최대 개수에 도달했습니다.");
+    return;
+  }
+
+  const laneX = getLaneXForText(txt);
+
+  if (laneX === null || !Number.isFinite(laneX)) {
+    console.warn("사용 가능한 메모 줄이 없습니다.");
+    return;
+  }
+
+  const routine = {
     txt,
-    total: min(count, MAX_MEMOS),
-    remaining: min(count, MAX_MEMOS),
+    total: count,
+    remaining: count,
     nextSpawnAt: millis(),
     created: 0,
     activeMemo: null,
     failedMemos: [],
-    laneX: getLaneXForText(txt),
-  });
+    laneX,
+    waitingForFragments: false,
+    pendingBreakMemos: [],
+  };
+
+  routines.push(routine);
+
+  // 홈 화면에서 추가했더라도 메모 화면으로 전환
+  screenMode = "routine";
+  updateTopControlsVisibility();
 
   taskInput.value("");
   saveState();
 
-  taskInput.value("");
-  saveState();
+  // 다음 draw()까지 기다리지 않고 즉시 첫 메모 생성
+  spawnMemo(routine);
 }
 
-function getLaneX() {
-  const spacing = boxW + 30;
-  const laneCount = max(
-    1,
-    floor((width - 2 * SIDE_MARGIN - boxW) / spacing) + 1,
+function getLaneX(txt = null) {
+  const spacing = boxW + 24;
+  const halfMemo = boxW / 2 + 4;
+  const minX = SIDE_MARGIN + halfMemo;
+  const maxX = width - SIDE_MARGIN - halfMemo;
+  const centerX = width / 2;
+
+  const lanes = [centerX];
+
+  for (let i = 1; ; i++) {
+    const leftX = centerX - i * spacing;
+    const rightX = centerX + i * spacing;
+    let added = false;
+
+    if (leftX >= minX) {
+      lanes.push(leftX);
+      added = true;
+    }
+
+    if (rightX <= maxX) {
+      lanes.push(rightX);
+      added = true;
+    }
+
+    if (!added) break;
+  }
+
+  // 다른 문구가 이미 사용 중인 줄 목록
+  const usedX = new Set(
+    Object.entries(memoLanes)
+      .filter(([text]) => text !== txt)
+      .map(([, x]) => Number(x)),
   );
-  const laneIndex = nextLane % laneCount;
-  nextLane++;
-  return SIDE_MARGIN + boxW / 2 + laneIndex * spacing;
+
+  // 현재 화면에 남아 있는 메모의 위치도 확인
+  for (const memo of memos) {
+    if (memo.txt !== txt) {
+      usedX.add(Number(memo.x));
+    }
+  }
+
+  // 사용하지 않는 첫 번째 줄을 배정
+  const laneX = lanes.find(
+    (x) => ![...usedX].some((used) => Math.abs(used - x) < 1),
+  );
+
+  return laneX === undefined ? null : laneX;
 }
 
 function getLaneXForText(txt) {
-  if (memoLanes[txt] === undefined) {
-    memoLanes[txt] = getLaneX();
+  // 같은 문구는 기존 줄을 그대로 사용
+  const existingMemo = memos.find((memo) => memo.txt === txt);
+
+  if (existingMemo) {
+    memoLanes[txt] = existingMemo.x;
+    return existingMemo.x;
   }
-  return memoLanes[txt];
+
+  // 저장된 줄이 다른 문구와 겹치지 않는지 확인
+  const savedX = memoLanes[txt];
+
+  if (savedX !== undefined && savedX !== null) {
+    const conflict = Object.entries(memoLanes).some(
+      ([otherText, x]) =>
+        otherText !== txt && Math.abs(Number(x) - Number(savedX)) < 1,
+    );
+
+    if (!conflict) {
+      return Number(savedX);
+    }
+  }
+
+  // 저장된 줄이 겹치면 새로운 줄 배정
+  const laneX = getLaneX(txt);
+
+  if (laneX !== null) {
+    memoLanes[txt] = laneX;
+  }
+
+  return laneX;
 }
 
 function getPatternForText(txt) {
@@ -209,7 +325,7 @@ function getPatternForText(txt) {
 
 function spawnMemo(routine) {
   if (memos.length >= MAX_MEMOS || routine.remaining <= 0) return;
-  if (routine.activeMemo) return;
+  if (routine.activeMemo || routine.waitingForFragments) return;
 
   const x = routine.laneX;
   const startY = memoStartLine + boxH / 2 + MEMO_START_GAP;
@@ -264,6 +380,7 @@ function spawnMemo(routine) {
 
   cards.forEach((card, index) => {
     card.stackIndex = index;
+    card.hidden = false;
     card.startY = startY + index * stackOffset;
     card.targetY = topTargetY + index * stackOffset;
     card.speedStep = 0;
@@ -284,6 +401,7 @@ function spawnMemo(routine) {
 }
 
 function createFragments(memo) {
+  const routine = memo.routine;
   const p = memo.body.position;
   const available = max(0, MAX_FRAGMENTS - fragments.length);
   const amount = min(12, available);
@@ -317,10 +435,73 @@ function createFragments(memo) {
       life: 42,
       size,
       color: randomPaletteColor(),
+      routine: memo.routine,
     });
 
     Composite.add(engine.world, body);
   }
+
+  if (memo.routine) {
+    memo.routine.waitingForFragments = amount > 0;
+  }
+
+  if (routine) {
+    routine.waitingForFragments = amount > 0;
+  }
+}
+
+function startNextBreakMemo(routine) {
+  if (!routine || routine.waitingForFragments) return;
+
+  const queue = routine.pendingBreakMemos || [];
+  const memo = queue.shift();
+
+  routine.pendingBreakMemos = queue;
+
+  // 파편화할 메모가 더 이상 없으면 다음 메모 예약
+  if (!memo) {
+    routine.activeMemo = null;
+
+    if (routine.remaining > 0) {
+      routine.nextSpawnAt = millis();
+    } else {
+      archiveFailedMemos(routine);
+    }
+
+    saveState();
+    return;
+  }
+
+  memo.broken = false;
+  memo.hidden = false;
+  memo.breaking = true;
+  memo.targetY = routine.breakTargetY;
+  memo.speedStep = 0;
+
+  const currentY = memo.body.position.y;
+  const distance = Math.max(0, memo.targetY - currentY);
+
+  memo.totalSteps = Math.max(1, Math.ceil(distance / STEP_SIZE));
+
+  const BREAK_DURATION_MS = 500;
+
+  memo.stepInterval = Math.max(1, BREAK_DURATION_MS / memo.totalSteps);
+
+  memo.nextStepAt = millis() + memo.stepInterval;
+
+  if (currentY >= memo.targetY) {
+    Body.setPosition(memo.body, {
+      x: memo.x,
+      y: memo.targetY,
+    });
+
+    memo.totalSteps = 1;
+    memo.speedStep = 0;
+    memo.nextStepAt = millis();
+  }
+
+  routine.activeMemo = memo;
+  saveState();
 }
 
 function removeMemo(memo, shouldSave = true) {
@@ -345,6 +526,39 @@ function removeMemo(memo, shouldSave = true) {
   if (shouldSave) saveState();
 }
 
+function archiveFailedMemos(routine) {
+  if (
+    !routine ||
+    routine.remaining > 0 ||
+    routine.activeMemo ||
+    routine.waitingForFragments
+  ) {
+    return;
+  }
+
+  const unfinished = [...routine.failedMemos];
+
+  for (const memo of unfinished) {
+    if (!memos.includes(memo)) continue;
+
+    const alreadyArchived = archivedMemos.some((item) => item.txt === memo.txt);
+
+    if (!alreadyArchived) {
+      archivedMemos.push({
+        txt: memo.txt,
+        pattern: memo.pattern,
+        routineNumber: memo.routineNumber,
+        routineTotal: memo.routineTotal,
+      });
+    }
+
+    removeMemo(memo, false);
+  }
+
+  routine.failedMemos = [];
+  saveState();
+}
+
 function randomPaletteColor() {
   const palette = [
     [255, 20, 35], // 선명한 레드
@@ -358,26 +572,105 @@ function randomPaletteColor() {
   return random(palette);
 }
 
+function updateTopControlsVisibility() {
+  const visible = screenMode === "routine";
+  const display = visible ? "block" : "none";
+  taskInput.elt.style.display = display;
+  countInput.elt.style.display = display;
+  addButton.elt.style.display = display;
+}
+
 function draw() {
-  background(246, 243, 235);
+  background("#fafaf8");
+  updatePatternState();
+
+  if (screenMode === "home") {
+    drawHomeScreen();
+    return;
+  }
+
+  if (screenMode === "archive") {
+    drawArchiveScreen();
+    return;
+  }
 
   Engine.update(engine);
-
   updateLayout();
   updateRoutines();
-  updateMemos();
-  updateFragments();
-  drawMemoStartLine();
 
-  drawMemos();
+  updateMemos();
+
+  if (
+    selectedMemo &&
+    enteredPattern.length > 0 &&
+    !isTouchingFloor &&
+    millis() - lastPatternInputAt >= 10000
+  ) {
+    enteredPattern = "";
+    selectedMemo.entered = "";
+    touchMarks = [];
+  }
+
+  updateFragments();
   drawFragments();
   drawFragmentPile();
+  drawMemos();
+  drawMemoStartLine();
   drawFloorArea();
   drawTouchMarks();
   drawStatus();
+  drawNavigationButtons();
 
   if (frameCount % 60 === 0) {
     saveState();
+  }
+}
+
+function updatePatternState() {
+  // 패턴 완성 후 1.5초가 지나면 메모 처리
+  if (patternCompletedAt > 0 && millis() - patternCompletedAt >= 1500) {
+    const memo = completedPatternMemo;
+    const completedScreen = completedPatternScreen;
+
+    patternCompletedAt = 0;
+    completedPatternMemo = null;
+    completedPatternScreen = null;
+
+    if (completedScreen === "archive" && memo) {
+      archivedMemos = archivedMemos.filter((item) => item !== memo);
+
+      if (selectedArchivedMemo === memo) {
+        selectedArchivedMemo = null;
+      }
+    } else if (completedScreen === "routine" && memo) {
+      const completedRoutine = memo.routine;
+
+      removeMemo(memo, false);
+
+      if (completedRoutine && completedRoutine.remaining > 0) {
+        completedRoutine.nextSpawnAt =
+          millis() + ROUTINE_DURATION_MS / completedRoutine.total;
+      }
+    }
+
+    enteredPattern = "";
+    touchMarks = [];
+    isTouchingFloor = false;
+    saveState();
+    return;
+  }
+
+  // 완성된 패턴은 1.5초 동안 그대로 유지
+  if (patternCompletedAt > 0) return;
+
+  // 10초 동안 추가 입력이 없으면 미완성 패턴 초기화
+  if (enteredPattern.length > 0 && millis() - lastPatternInputAt >= 10000) {
+    enteredPattern = "";
+    touchMarks = [];
+
+    if (selectedMemo) {
+      selectedMemo.entered = "";
+    }
   }
 }
 
@@ -389,17 +682,24 @@ function drawMemoStartLine() {
 
 function updateRoutines() {
   const now = millis();
+
   for (const routine of routines) {
     if (
       routine.remaining > 0 &&
       !routine.activeMemo &&
+      !routine.waitingForFragments &&
       now >= routine.nextSpawnAt
     ) {
-      spawnMemo(routine);
     }
   }
+
   routines = routines.filter(
-    (routine) => routine.remaining > 0 || routine.activeMemo,
+    (routine) =>
+      routine.remaining > 0 ||
+      routine.activeMemo ||
+      routine.waitingForFragments ||
+      (routine.pendingBreakMemos && routine.pendingBreakMemos.length > 0) ||
+      routine.failedMemos.length > 0,
   );
 }
 
@@ -410,6 +710,43 @@ function updateMemos() {
     const routine = memo.routine;
 
     if (!routine || memo.broken) continue;
+
+    // 파편화 대기 중인 메모도 공통 목표 높이까지 이동
+    if (memo.breaking) {
+      if (now >= memo.nextStepAt) {
+        const currentY = memo.body.position.y;
+        const nextY = Math.min(currentY + STEP_SIZE, memo.targetY);
+
+        Body.setPosition(memo.body, {
+          x: memo.x,
+          y: nextY,
+        });
+
+        memo.nextStepAt = now + memo.stepInterval;
+      }
+
+      // 메모의 밑변이 공통 목표 높이에 도달했을 때 파편화
+      const currentY = memo.body.position.y;
+
+      if (currentY >= memo.targetY - 0.1) {
+        memo.breaking = false;
+        memo.broken = true;
+        memo.hidden = true;
+
+        if (routine.activeMemo === memo) {
+          routine.activeMemo = null;
+        }
+
+        if (!routine.failedMemos.includes(memo)) {
+          routine.failedMemos.push(memo);
+        }
+
+        createFragments(memo);
+        saveState();
+      }
+
+      continue;
+    }
 
     if (now >= memo.nextStepAt) {
       memo.speedStep = Math.min(
@@ -435,29 +772,20 @@ function updateMemos() {
 
     const p = memo.body.position;
 
-    // 현재 새 메모가 목표 위치에 도달한 경우에만 실패 처리
     if (memo === routine.activeMemo && p.y >= memo.targetY - 0.1) {
-      memo.broken = true;
+      const breakQueue = [...routine.failedMemos, memo].sort(
+        (a, b) => b.body.position.y - a.body.position.y,
+      );
 
-      createFragments(memo);
+      routine.failedMemos = [];
+      routine.pendingBreakMemos = breakQueue;
 
-      // 마지막 회차가 실패하면 이전 미완료 메모를 정리
-      if (routine.remaining <= 0) {
-        for (const oldMemo of [...routine.failedMemos]) {
-          removeMemo(oldMemo, false);
-        }
+      // 가장 아래에 있는 첫 번째 메모의 위치를 공통 파편화 위치로 설정
+      routine.breakTargetY = breakQueue[0].body.position.y;
+      routine.nextSpawnAt = Infinity;
 
-        routine.failedMemos = [];
-
-        // 마지막 메모는 삭제하지 않고 빨간 메모로 남김
-        routine.activeMemo = memo;
-        saveState();
-      } else {
-        // 다음 회차가 남아 있으면 미완료 메모로 보관
-        routine.activeMemo = null;
-        routine.failedMemos.push(memo);
-        routine.nextSpawnAt = now;
-      }
+      startNextBreakMemo(routine);
+      saveState();
     }
   }
 }
@@ -469,75 +797,197 @@ function updateFragments() {
     if (fragment.life <= 0) {
       Composite.remove(engine.world, fragment.body);
       fragments = fragments.filter((f) => f !== fragment);
+
+      const routine = fragment.routine;
+
+      if (
+        routine &&
+        routine.waitingForFragments &&
+        !fragments.some((f) => f.routine === routine)
+      ) {
+        routine.waitingForFragments = false;
+
+        if (routine.pendingBreakMemos && routine.pendingBreakMemos.length > 0) {
+          startNextBreakMemo(routine);
+        } else if (routine.remaining > 0) {
+          routine.activeMemo = null;
+          routine.nextSpawnAt = millis();
+          spawnMemo(routine);
+        } else {
+          archiveFailedMemos(routine);
+        }
+
+        saveState();
+      }
     }
   }
 }
 
 function drawMemos() {
+  // 먼저 모든 메모의 확대 비율을 갱신
   for (const memo of memos) {
-    const p = memo.body.position;
+    if (memo.scaleFactor === undefined) {
+      memo.scaleFactor = 1;
+    }
+
     const isSelected = memo === selectedMemo;
+    const hasInput = memo.entered.length > 0;
+    const isFocused =
+      isSelected && (hasInput || millis() - selectedMemoAt < 10000);
 
-    push();
-    rectMode(CENTER);
+    const targetScale = isFocused ? 1.2 : 1;
 
-    // 메모 상자
-    stroke(isSelected ? 35 : 100);
-    strokeWeight(isSelected ? 2.5 : 1);
-    // 메모가 내려갈수록 크림색에서 짙은 적색으로 변화
+    memo.scaleFactor += (targetScale - memo.scaleFactor) * 0.12;
+  }
+
+  const displayPositions = getMemoDisplayPositions();
+
+  for (const memo of memos) {
+    if (memo.hidden) continue;
+    const p = {
+      x: memo.body.position.x,
+      y: displayPositions.get(memo),
+    };
+
+    const isSelected = memo === selectedMemo;
+    const scaleFactor = memo.scaleFactor;
+
     let t = map(p.y, -boxH / 2, breakLine - boxH / 2, 0, 1);
     t = constrain(t, 0, 1);
 
-    // 절반 지점까지 아이보리색을 유지하고,
-    // 그 이후부터 선명한 빨간색으로 변화
-    let redT = map(t, 0.5, 1, 0, 1);
-    redT = constrain(redT, 0, 1);
-    redT = redT * redT;
+    let redT = constrain(map(t, 0.5, 1, 0, 1), 0, 1);
+    redT *= redT;
 
-    // 줄도 메모와 동일하게 아래로 갈수록 빨간색으로 변화
-    stroke(lerpColor(color("#F2E8DC"), color("#E21E42"), redT));
-    strokeWeight(2);
-    line(p.x, memoStartLine, p.x, p.y - boxH / 2);
+    // 세로 선은 확대하지 않고 메모 윗부분까지 연결
+    const lineEndY = p.y - (boxH * scaleFactor) / 2;
 
-    let memoColor = lerpColor(color("#F2E8DC"), color("#E21E42"), redT);
+    if (lineEndY > memoStartLine) {
+      stroke(lerpColor(color("#F2E8DC"), color("#E21E42"), redT));
+      strokeWeight(2);
+      line(p.x, memoStartLine, p.x, lineEndY);
+    }
+
+    // 메모 상자와 내부 요소만 확대
+    push();
+    translate(p.x, p.y);
+    scale(scaleFactor);
+    rectMode(CENTER);
+
+    stroke(isSelected ? 35 : 100);
+    strokeWeight(isSelected ? 2.5 : 1);
+
+    const memoColor = lerpColor(color("#F2E8DC"), color("#E21E42"), redT);
 
     fill(memoColor);
-    rect(p.x, p.y, boxW, boxH, 5);
+    rect(0, 0, boxW, boxH, 5);
 
     noStroke();
 
-    // 1. 루틴 텍스트: 상단 중앙
     fill(redT > 0.45 ? "#FFF4E8" : "#231719");
     textAlign(CENTER, CENTER);
     textSize(14);
-    text(memo.txt, p.x, p.y - boxH / 2 + 23, boxW - 30, 30);
+    text(memo.txt, 0, -boxH / 2 + 23, boxW - 30, 30);
 
-    // 2. 패턴 코드: 중앙 하단
     fill(redT > 0.45 ? "#FFF4E8" : "#231719");
-    textAlign(CENTER, CENTER);
     textSize(40);
-    text(memo.pattern, p.x, p.y + 17);
+    text(memo.pattern, 0, 17);
 
-    // 3. 현재 루틴 진행 횟수: 우측 하단
     fill(90);
     textAlign(RIGHT, CENTER);
     textSize(10);
     text(
       `${memo.routineNumber}/${memo.routineTotal}`,
-      p.x + boxW / 2 - 10,
-      p.y + boxH / 2 - 10,
+      boxW / 2 - 10,
+      boxH / 2 - 10,
     );
 
-    // 선택된 메모 테두리
     if (isSelected) {
       noFill();
       stroke(50, 120, 200);
       strokeWeight(2);
-      rect(p.x, p.y, boxW + 8, boxH + 8, 7);
+      rect(0, 0, boxW + 8, boxH + 8, 7);
     }
 
     pop();
   }
+}
+
+function getMemoDisplayPositions() {
+  const positions = new Map();
+  const lanes = new Map();
+
+  // 같은 세로줄의 메모끼리 묶기
+  for (const memo of memos) {
+    if (memo.hidden) continue;
+
+    if (!lanes.has(memo.x)) lanes.set(memo.x, []);
+    lanes.get(memo.x).push(memo);
+  }
+
+  for (const lane of lanes.values()) {
+    lane.sort((a, b) => a.body.position.y - b.body.position.y);
+
+    // 우선 각 메모의 기본 위치 설정
+    for (const memo of lane) {
+      const scale = memo.scaleFactor ?? 1;
+      const minY = memoStartLine + (boxH * scale) / 2 + 8;
+
+      positions.set(memo, Math.max(memo.body.position.y, minY));
+    }
+
+    // 위에서부터 카드 사이의 간격 확보
+    for (let i = 1; i < lane.length; i++) {
+      const upper = lane[i - 1];
+      const lower = lane[i];
+
+      const upperScale = upper.scaleFactor ?? 1;
+      const lowerScale = lower.scaleFactor ?? 1;
+
+      const minY =
+        positions.get(upper) +
+        (boxH * upperScale) / 2 +
+        (boxH * lowerScale) / 2 +
+        STACK_GAP;
+
+      positions.set(lower, Math.max(positions.get(lower), minY));
+    }
+
+    // 선택된 메모가 있으면 선택 카드가 위쪽 카드에 가리지 않도록 조정
+    const selectedIndex = lane.findIndex((memo) => memo === selectedMemo);
+
+    if (selectedIndex > 0) {
+      const selected = lane[selectedIndex];
+      const selectedScale = selected.scaleFactor ?? 1;
+
+      for (let i = selectedIndex - 1; i >= 0; i--) {
+        const upper = lane[i];
+        const upperScale = upper.scaleFactor ?? 1;
+
+        const maxY =
+          positions.get(selected) -
+          (boxH * selectedScale) / 2 -
+          (boxH * upperScale) / 2 -
+          STACK_GAP;
+
+        positions.set(upper, Math.min(positions.get(upper), maxY));
+      }
+    }
+  }
+
+  // 파편화 기준선을 넘어가는 메모 위치 제한
+  for (const lane of lanes.values()) {
+    const visibleLane = lane.filter((memo) => !memo.hidden);
+
+    for (let i = visibleLane.length - 1; i >= 0; i--) {
+      const memo = visibleLane[i];
+      const scale = memo.scaleFactor ?? 1;
+      const maxY = breakLine - (boxH * scale) / 2;
+
+      positions.set(memo, Math.min(positions.get(memo), maxY));
+    }
+  }
+
+  return positions;
 }
 
 function drawFragments() {
@@ -576,13 +1026,13 @@ function drawFloorArea() {
 
   if (selectedMemo) {
     text(
-      `선택된 메모의 패턴을 입력하세요 ${enteredPattern}`,
+      "아래 영역을 짧게 또는 길게 눌러 패턴을 입력하세요",
       width / 2,
       height - 25,
     );
   } else {
     text(
-      "메모를 선택한 뒤 바닥 영역을 짧게 또는 길게 누르세요",
+      "메모를 선택한 뒤 아래 영역을 눌러 패턴을 입력하세요",
       width / 2,
       height - 25,
     );
@@ -701,9 +1151,17 @@ function drawTouchMarks() {
 }
 
 function addTouchMark(x, y, type) {
+  const markColors = [
+    [255, 95, 105], // 코랄 레드
+    [100, 190, 255], // 스카이 블루
+    [170, 130, 255], // 라벤더
+    [255, 190, 80], // 옐로 오렌지
+    [100, 210, 160], // 민트 그린
+  ];
+
   touchMarks.push({
     type,
-    color: [226, 30, 66],
+    color: markColors[touchMarks.length % markColors.length],
   });
 
   const dotWidth = 18;
@@ -729,33 +1187,177 @@ function addTouchMark(x, y, type) {
 }
 
 function mousePressed() {
-  // 메모를 위에서부터 역순으로 검사합니다.
-  for (let i = memos.length - 1; i >= 0; i--) {
-    const memo = memos[i];
-    const p = memo.body.position;
+  // 1. 홈 화면의 시작 버튼
+  if (screenMode === "home") {
+    const buttonX = width / 2;
+    const buttonY = height * 0.8;
+    const buttonW = 180;
+    const buttonH = 54;
 
     if (
-      mouseX >= p.x - boxW / 2 &&
-      mouseX <= p.x + boxW / 2 &&
-      mouseY >= p.y - boxH / 2 &&
-      mouseY <= p.y + boxH / 2
+      mouseX >= buttonX - buttonW / 2 &&
+      mouseX <= buttonX + buttonW / 2 &&
+      mouseY >= buttonY - buttonH / 2 &&
+      mouseY <= buttonY + buttonH / 2
     ) {
-      selectedMemo = memo;
-      enteredPattern = "";
-      memo.entered = "";
-      touchMarks = [];
-      return;
+      screenMode = "routine";
+      updateTopControlsVisibility();
+    }
+
+    return false;
+  }
+
+  // 2. 상단 화면 전환 버튼
+  const homeX = width - NAV_BUTTON_W * 3 - NAV_GAP * 2 - 16;
+  const memoX = homeX + NAV_BUTTON_W + NAV_GAP;
+  const archiveX = memoX + NAV_BUTTON_W + NAV_GAP;
+  const navY = 20;
+
+  if (mouseY >= navY && mouseY <= navY + NAV_BUTTON_H) {
+    if (mouseX >= homeX && mouseX <= homeX + NAV_BUTTON_W) {
+      screenMode = "home";
+      updateTopControlsVisibility();
+      saveState();
+      return false;
+    }
+
+    if (mouseX >= memoX && mouseX <= memoX + NAV_BUTTON_W) {
+      screenMode = "routine";
+      updateTopControlsVisibility();
+      saveState();
+      return false;
+    }
+
+    if (mouseX >= archiveX && mouseX <= archiveX + NAV_BUTTON_W) {
+      screenMode = "archive";
+      updateTopControlsVisibility();
+      saveState();
+      return false;
     }
   }
 
-  // 바닥 영역을 누르면 패턴 입력을 시작합니다.
+  // 3. 보관함 화면: 보관된 메모 선택
+  if (screenMode === "archive") {
+    const cardW = 180;
+    const cardH = 100;
+    const scaleFactor = 1.2;
+    const gapX = 40;
+    const gapY = 36;
+
+    const spacingX = cardW * scaleFactor + gapX;
+    const spacingY = cardH * scaleFactor + gapY;
+
+    const columns = max(1, floor((width - 48 + gapX) / spacingX));
+
+    const totalW = columns * cardW * scaleFactor + (columns - 1) * gapX;
+
+    const startX = max(24, (width - totalW) / 2);
+    const startY = 110;
+
+    for (let i = archivedMemos.length - 1; i >= 0; i--) {
+      const col = i % columns;
+      const row = floor(i / columns);
+
+      const x = startX + col * spacingX;
+      const y = startY + row * spacingY;
+
+      const centerX = x + cardW / 2;
+      const centerY = y + cardH / 2;
+
+      if (
+        mouseX >= centerX - (cardW * scaleFactor) / 2 - 4 &&
+        mouseX <= centerX + (cardW * scaleFactor) / 2 + 4 &&
+        mouseY >= centerY - (cardH * scaleFactor) / 2 - 4 &&
+        mouseY <= centerY + (cardH * scaleFactor) / 2 + 4
+      ) {
+        selectedArchivedMemo = archivedMemos[i];
+        enteredPattern = "";
+        touchMarks = [];
+        return false;
+      }
+    }
+
+    // 보관함의 아래쪽 입력 영역
+    if (mouseY >= height - TOUCH_ZONE_HEIGHT && selectedArchivedMemo) {
+      isTouchingFloor = true;
+      touchStart = millis();
+    }
+
+    return false;
+  }
+
+  // 4. 일반 메모 화면: 메모 선택 및 확대
+  const displayPositions = getMemoDisplayPositions();
+
+  for (let i = memos.length - 1; i >= 0; i--) {
+    const memo = memos[i];
+
+    if (memo.hidden) continue;
+
+    const scaleFactor = memo.scaleFactor ?? 1;
+    const x = memo.body.position.x;
+    const y = displayPositions.get(memo);
+
+    if (y === undefined) continue;
+
+    if (
+      mouseX >= x - (boxW * scaleFactor) / 2 - 4 &&
+      mouseX <= x + (boxW * scaleFactor) / 2 + 4 &&
+      mouseY >= y - (boxH * scaleFactor) / 2 - 4 &&
+      mouseY <= y + (boxH * scaleFactor) / 2 + 4
+    ) {
+      selectedMemo = memo;
+      selectedMemoAt = millis();
+      enteredPattern = "";
+      memo.entered = "";
+      touchMarks = [];
+      return false;
+    }
+  }
+
+  // 5. 일반 메모 화면의 아래쪽 입력 영역
   if (mouseY >= touchZoneTop && selectedMemo) {
     isTouchingFloor = true;
     touchStart = millis();
   }
+
+  return false;
 }
 
 function mouseReleased() {
+  if (patternCompletedAt > 0) {
+    isTouchingFloor = false;
+    return false;
+  }
+  if (screenMode === "archive") {
+    if (!isTouchingFloor || !selectedArchivedMemo) {
+      isTouchingFloor = false;
+      return false;
+    }
+
+    const duration = millis() - touchStart;
+    const type = duration < 350 ? "." : "-";
+
+    addTouchMark(mouseX, mouseY, type);
+
+    enteredPattern += type;
+    lastPatternInputAt = millis();
+
+    const normalizedPattern = selectedArchivedMemo.pattern.replaceAll("·", ".");
+
+    if (!normalizedPattern.startsWith(enteredPattern)) {
+      enteredPattern = "";
+      touchMarks = [];
+    } else if (enteredPattern === normalizedPattern) {
+      patternCompletedAt = millis();
+      completedPatternMemo = selectedArchivedMemo;
+      completedPatternScreen = "archive";
+    }
+
+    isTouchingFloor = false;
+    return false;
+  }
+
   if (!isTouchingFloor || !selectedMemo) {
     isTouchingFloor = false;
     return false;
@@ -768,6 +1370,7 @@ function mouseReleased() {
 
   enteredPattern += type;
   selectedMemo.entered = enteredPattern;
+  lastPatternInputAt = millis();
 
   const normalizedPattern = selectedMemo.pattern.replaceAll("·", ".");
   if (!normalizedPattern.startsWith(enteredPattern)) {
@@ -775,8 +1378,9 @@ function mouseReleased() {
     selectedMemo.entered = "";
     touchMarks = [];
   } else if (enteredPattern === normalizedPattern) {
-    removeMemo(selectedMemo);
-    touchMarks = [];
+    patternCompletedAt = millis();
+    completedPatternMemo = selectedMemo;
+    completedPatternScreen = "routine";
   }
 
   isTouchingFloor = false;
@@ -808,11 +1412,18 @@ function saveState() {
         routineNumber: memo.routineNumber,
         routineTotal: memo.routineTotal,
       })),
+      archivedMemos: archivedMemos.map((memo) => ({
+        txt: memo.txt,
+        pattern: memo.pattern,
+        routineNumber: memo.routineNumber,
+        routineTotal: memo.routineTotal,
+      })),
       routines: routines.map((routine) => ({
         txt: routine.txt,
         total: routine.total,
         remaining: routine.remaining,
         created: routine.created,
+        nextSpawnDelay: Math.max(0, routine.nextSpawnAt - millis()),
       })),
       nextPattern,
       memoPatterns,
@@ -831,7 +1442,18 @@ function loadMemos() {
     const saved = localStorage.getItem("dailyRoutineMemos");
     if (!saved) return;
     const data = JSON.parse(saved);
-    if (!data || !Array.isArray(data.memos)) return;
+    if (!data) return;
+
+    archivedMemos = Array.isArray(data.archivedMemos)
+      ? data.archivedMemos.map((item) => ({
+          txt: String(item.txt ?? ""),
+          pattern: String(item.pattern ?? PATTERNS[0]),
+          routineNumber: Number(item.routineNumber ?? 1),
+          routineTotal: Number(item.routineTotal ?? 1),
+        }))
+      : [];
+
+    if (!Array.isArray(data.memos)) return;
 
     memoPatterns = data.memoPatterns || {};
     memoLanes = data.memoLanes || {};
@@ -879,9 +1501,11 @@ function loadMemos() {
         routine: null,
         stackIndex: Number(item.stackIndex ?? 0),
       };
+
       if (memoPatterns[memo.txt] === undefined) {
         memoPatterns[memo.txt] = memo.pattern;
       }
+
       if (memoLanes[memo.txt] === undefined) {
         memoLanes[memo.txt] = memo.x;
       }
@@ -892,16 +1516,21 @@ function loadMemos() {
 
     if (Array.isArray(data.routines)) {
       routines = data.routines
-        .filter((r) => Number(r.remaining) > 0)
+        .filter(
+          (r) =>
+            Number(r.remaining) > 0 ||
+            data.memos.some((memo) => memo.txt === r.txt),
+        )
         .map((r) => ({
           txt: String(r.txt ?? ""),
           total: Number(r.total ?? 1),
           remaining: Number(r.remaining ?? 0),
           created: Number(r.created ?? 0),
-          nextSpawnAt: millis(),
+          nextSpawnAt: millis() + Math.max(0, Number(r.nextSpawnDelay ?? 0)),
           activeMemo: null,
           failedMemos: [],
           laneX: getLaneXForText(String(r.txt ?? "")),
+          waitingForFragments: false,
         }));
 
       for (const routine of routines) {
@@ -948,5 +1577,198 @@ function windowResized() {
       x,
       y: memo.body.position.y,
     });
+  }
+
+  memoLanes = {};
+
+  for (const memo of memos) {
+    if (memoLanes[memo.txt] === undefined) {
+      memoLanes[memo.txt] = memo.x;
+    }
+  }
+}
+
+/////////////
+
+function drawHomeScreen() {
+  background("#fafaf8");
+
+  const centerX = width / 2;
+
+  // 제목
+  noStroke();
+  fill("#231719");
+  textAlign(CENTER, CENTER);
+
+  textSize(34);
+  textStyle(BOLD);
+  text("ROUTINE", centerX, height * 0.36);
+  textStyle(NORMAL);
+
+  // 소제목
+  textSize(13);
+  fill("#77716D");
+  text("건강한 루틴을 만드는 메모", centerX, height * 0.36 + 32);
+
+  // 안내 문구
+  fill("#231719");
+  textSize(14);
+  textLeading(28);
+
+  const guideText =
+    "습관으로 만들고 싶은 행동을 메모로 입력합니다.\n" +
+    "1. 메모가 바닥에 닿기 전에 행동을 실천하고 메모를 삭제합니다.\n" +
+    "2. 메모를 삭제하기 위해서는 메모에 표시된 패턴을 똑같이 터치해야 합니다.";
+
+  const guideY = height / 2 + 250;
+  const guideH = 120;
+
+  text(guideText, centerX, guideY, Math.min(width - 48, 700), guideH);
+
+  // 시작 버튼
+  const buttonY = height * 0.8;
+
+  rectMode(CENTER);
+  fill("#231719");
+  rect(centerX, buttonY, 180, 54, 5);
+
+  fill("#FFFFFF");
+  textSize(16);
+  text("시작", centerX, buttonY);
+
+  rectMode(CENTER);
+}
+
+function drawNavigationButtons() {
+  const homeX = width - NAV_BUTTON_W * 3 - NAV_GAP * 2 - 16;
+  const memoX = homeX + NAV_BUTTON_W + NAV_GAP;
+  const archiveX = memoX + NAV_BUTTON_W + NAV_GAP;
+  const y = 20;
+
+  rectMode(CORNER);
+  textAlign(CENTER, CENTER);
+  textSize(13);
+
+  stroke("#B7B0AA");
+  strokeWeight(1);
+  fill("#FFFFFF");
+
+  rect(homeX, y, NAV_BUTTON_W, NAV_BUTTON_H, 5);
+  rect(memoX, y, NAV_BUTTON_W, NAV_BUTTON_H, 5);
+  rect(archiveX, y, NAV_BUTTON_W, NAV_BUTTON_H, 5);
+
+  noStroke();
+  fill("#231719");
+
+  text("홈", homeX + NAV_BUTTON_W / 2, y + NAV_BUTTON_H / 2);
+  text("메모", memoX + NAV_BUTTON_W / 2, y + NAV_BUTTON_H / 2);
+  text("보관함", archiveX + NAV_BUTTON_W / 2, y + NAV_BUTTON_H / 2);
+}
+
+function drawArchiveScreen() {
+  background("#fafaf8");
+
+  const cardW = 180;
+  const cardH = 100;
+  const scaleFactor = 1.2;
+  const gapX = 40;
+  const gapY = 36;
+
+  const spacingX = cardW * scaleFactor + gapX;
+  const spacingY = cardH * scaleFactor + gapY;
+
+  const columns = Math.max(1, Math.floor((width - 48 + gapX) / spacingX));
+  const totalW = (columns - 1) * spacingX + cardW;
+  const startX = (width - totalW) / 2;
+  const startY = 110;
+
+  for (let i = 0; i < archivedMemos.length; i++) {
+    const memo = archivedMemos[i];
+    const col = i % columns;
+    const row = Math.floor(i / columns);
+
+    const x = startX + col * spacingX;
+    const y = startY + row * spacingY;
+
+    if (memo.scaleFactor === undefined) {
+      memo.scaleFactor = 1;
+    }
+
+    const targetScale = selectedArchivedMemo === memo ? 1.2 : 1;
+
+    memo.scaleFactor += (targetScale - memo.scaleFactor) * 0.18;
+
+    push();
+    translate(x + cardW / 2, y + cardH / 2);
+    scale(memo.scaleFactor);
+    rectMode(CENTER);
+
+    fill(selectedArchivedMemo === memo ? "#E7D8CB" : "#F2E8DC");
+    stroke("#8B8179");
+    strokeWeight(1);
+    rect(0, 0, cardW, cardH, 5);
+
+    noStroke();
+    fill("#231719");
+    textAlign(CENTER, CENTER);
+    textSize(13);
+    text(memo.txt, 0, -35, cardW - 20, 30);
+
+    textSize(22);
+    text(memo.pattern, 0, 12);
+
+    if (selectedArchivedMemo === memo) {
+      noFill();
+      stroke(50, 120, 200);
+      strokeWeight(2);
+      rect(0, 0, cardW + 8, cardH + 8, 7);
+    }
+
+    pop();
+  }
+
+  drawArchiveInputArea();
+
+  // 버튼 영역과 메모 영역을 구분하는 빨간 선
+  stroke(190, 20, 35);
+  strokeWeight(1.5);
+  line(0, 75, width, 75);
+  drawNavigationButtons();
+}
+
+function drawArchiveInputArea() {
+  const zoneH = TOUCH_ZONE_HEIGHT;
+  const y = height - zoneH;
+
+  noStroke();
+  fill("#1f2022");
+  rectMode(CORNER);
+  rect(0, y, width, zoneH);
+
+  // 입력 영역 위쪽 경계
+  stroke("#697585");
+  strokeWeight(1.5);
+  line(0, y, width, y);
+
+  // 루틴 페이지와 동일한 색상의 패턴 도형
+  drawTouchMarks();
+
+  noStroke();
+  fill("#F2E8DC");
+  textAlign(CENTER, CENTER);
+  textSize(12);
+
+  if (selectedArchivedMemo) {
+    text(
+      "아래 영역을 짧게 또는 길게 눌러 패턴을 입력하세요",
+      width / 2,
+      height - 22,
+    );
+  } else {
+    text(
+      "메모를 선택한 뒤 아래 영역을 눌러 패턴을 입력하세요",
+      width / 2,
+      height - 22,
+    );
   }
 }
