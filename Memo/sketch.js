@@ -1190,7 +1190,8 @@ function mousePressed() {
   // 1. 홈 화면의 시작 버튼
   if (screenMode === "home") {
     const buttonX = width / 2;
-    const buttonY = height * 0.8;
+    const isSmallScreen = width < 700 || height < 650;
+    const buttonY = height * (isSmallScreen ? 0.9 : 0.86);
     const buttonW = 180;
     const buttonH = 54;
 
@@ -1598,8 +1599,8 @@ function drawHomeScreen() {
 
   // 화면 크기에 따라 세로 위치와 여백 조절
   const titleY = height * (isSmallScreen ? 0.22 : 0.28);
-  const guideY = height * (isSmallScreen ? 0.53 : 0.57);
-  const buttonY = height * (isSmallScreen ? 0.82 : 0.8);
+  const guideY = height * (isSmallScreen ? 0.43 : 0.52);
+  const buttonY = height * (isSmallScreen ? 0.9 : 0.86);
 
   // 제목
   noStroke();
