@@ -33,6 +33,10 @@ let nextLane = 0;
 let memoLanes = {};
 let memoPatterns = {};
 
+let homeButtonY = 0;
+let homeButtonW = 180;
+let homeButtonH = 54;
+
 const PATTERNS = [
   "·-··-",
   "--·-·",
@@ -1189,17 +1193,13 @@ function addTouchMark(x, y, type) {
 function mousePressed() {
   // 1. 홈 화면의 시작 버튼
   if (screenMode === "home") {
-    const isSmallScreen = width < 700 || height < 650;
     const buttonX = width / 2;
-    const buttonY = height * 0.82;
-    const buttonW = 180;
-    const buttonH = 54;
 
     if (
-      mouseX >= buttonX - buttonW / 2 &&
-      mouseX <= buttonX + buttonW / 2 &&
-      mouseY >= buttonY - buttonH / 2 &&
-      mouseY <= buttonY + buttonH / 2
+      mouseX >= buttonX - homeButtonW / 2 &&
+      mouseX <= buttonX + homeButtonW / 2 &&
+      mouseY >= homeButtonY - homeButtonH / 2 &&
+      mouseY <= homeButtonY + homeButtonH / 2
     ) {
       screenMode = "routine";
       updateTopControlsVisibility();
@@ -1594,54 +1594,75 @@ function windowResized() {
 function drawHomeScreen() {
   background("#fafaf8");
 
+  // 노트북 기준 레이아웃
   const centerX = width / 2;
-  const isSmallScreen = width < 700 || height < 650;
+  const isSmallScreen = width < 700;
 
-  // 화면 크기에 따라 세로 위치와 여백 조절
-  const titleY = height * 0.3;
-  const guideY = height * 0.58;
-  const buttonY = height * 0.82;
+  // 전체 디자인을 하나의 묶음으로 배치
+  const baseWidth = 1440;
+  const baseHeight = 1000;
+  const scaleFactor = Math.min(width / baseWidth, height / baseHeight);
+
+  const s = Math.max(0.65, Math.min(1, scaleFactor));
+
+  // 요소별 간격과 크기
+  const titleSize = 34 * s;
+  const subtitleSize = 15 * s;
+  const guideSize = 14 * s;
+  const lineGap = 28 * s;
+  const buttonW = 180 * s;
+  const buttonH = 54 * s;
+
+  // 전체 묶음의 중심 위치
+  const groupCenterY = height * 0.52;
+
+  const titleY = groupCenterY - 155 * s;
+  const subtitleY = titleY + 32 * s;
+  const guideY = groupCenterY + 15 * s;
+  const guideH = 100 * s;
+  const buttonY = groupCenterY + 120 * s;
 
   // 제목
   noStroke();
   fill("#231719");
   textAlign(CENTER, CENTER);
-  textSize(isSmallScreen ? 30 : 34);
   textStyle(BOLD);
+  textSize(titleSize);
   text("ROUTINE", centerX, titleY);
   textStyle(NORMAL);
 
   // 소제목
-  textSize(15);
   fill("#77716D");
-  text("건강한 루틴을 만드는 메모", centerX, titleY + 32);
+  textSize(subtitleSize);
+  text("건강한 루틴을 만드는 메모", centerX, subtitleY);
 
   // 안내 문구
-  fill("#231719");
-  textSize(14);
-  textLeading(28);
-
-  const guideW = Math.min(width - 40, 700);
-  const guideH = 130;
-
-  textAlign(CENTER, CENTER);
-  text(guideText, centerX, guideY, guideW, guideH);
-
   const guideText =
     "습관으로 만들고 싶은 행동을 메모로 입력합니다.\n" +
     "1. 메모가 바닥에 닿기 전에 행동을 실천하고 메모를 삭제합니다.\n" +
     "2. 메모를 삭제하기 위해서는 메모에 표시된 패턴을 똑같이 터치해야 합니다.";
 
+  fill("#231719");
+  textSize(guideSize);
+  textLeading(lineGap);
+
+  text(guideText, centerX, guideY, Math.min(width - 40, 700 * s), guideH);
+
   // 시작 버튼
   rectMode(CENTER);
   noStroke();
   fill("#231719");
-  rect(centerX, buttonY, 180, 54, 5);
+  rect(centerX, buttonY, buttonW, buttonH, 5 * s);
 
   fill("#FFFFFF");
   textAlign(CENTER, CENTER);
-  textSize(16);
+  textSize(16 * s);
   text("시작", centerX, buttonY);
+
+  // 클릭 영역과 공유할 버튼 위치
+  homeButtonY = buttonY;
+  homeButtonW = buttonW;
+  homeButtonH = buttonH;
 
   rectMode(CENTER);
 }
