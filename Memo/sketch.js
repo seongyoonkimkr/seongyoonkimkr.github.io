@@ -1595,51 +1595,42 @@ function drawHomeScreen() {
   background("#fafaf8");
 
   const centerX = width / 2;
-  const small = width < 700 || height < 650;
+  const scale = Math.min(width / 700, height / 600, 1);
 
-  // 화면 크기에 맞춰 배치
-  const s = Math.min(width / 900, height / 700, 1);
-  const titleSize = Math.max(24, 34 * s);
-  const guideSize = Math.max(11, 14 * s);
-  const lineGap = Math.max(18, 25 * s);
+  const titleY = height * 0.2;
+  const subtitleY = height * 0.29;
+  const guideY = height * 0.48;
+  const buttonY = height * 0.78;
 
-  const titleY = height * 0.25;
-  const subtitleY = titleY + 32 * s;
-  const guideY = height * (small ? 0.55 : 0.53);
-  const guideW = Math.min(width - 32, 700);
-  const guideH = small ? 105 : 120;
-  const buttonY = height * (small ? 0.82 : 0.78);
-  const buttonW = 180;
-  const buttonH = 54;
-
-  // 제목
   noStroke();
-  fill("#231719");
   textAlign(CENTER, CENTER);
   textStyle(BOLD);
-  textSize(titleSize);
+  fill("#231719");
+  textSize(Math.max(22, 34 * scale));
   text("ROUTINE", centerX, titleY);
-  textStyle(NORMAL);
 
-  // 소제목
+  textStyle(NORMAL);
   fill("#77716D");
-  textSize(Math.max(12, 15 * s));
+  textSize(Math.max(12, 15 * scale));
   text("건강한 루틴을 만드는 메모", centerX, subtitleY);
 
-  // 안내 문구
   const guideText =
     "습관으로 만들고 싶은 행동을 메모로 입력합니다.\n" +
     "1. 메모가 바닥에 닿기 전에 행동을 실천하고 메모를 삭제합니다.\n" +
-    "2. 메모를 삭제하기 위해서는 메모에 표시된 패턴을 똑같이 터치해야 합니다.";
+    "2. 메모를 삭제하려면 표시된 패턴을 똑같이 터치해야 합니다.";
 
   fill("#231719");
-  textSize(guideSize);
-  textLeading(lineGap);
+  textSize(Math.max(10, 13 * scale));
+  textLeading(Math.max(16, 20 * scale));
 
-  // 중요: 텍스트 상자를 화면 중앙 기준으로 배치
-  text(guideText, (width - guideW) / 2, guideY - guideH / 2, guideW, guideH);
+  const guideW = Math.max(0, width - 32);
+  const guideH = Math.min(height * 0.25, 100);
 
-  // 시작 버튼
+  text(guideText, 16, guideY - guideH / 2, guideW, guideH);
+
+  const buttonW = Math.min(180, width - 40);
+  const buttonH = 54;
+
   rectMode(CENTER);
   noStroke();
   fill("#231719");
@@ -1650,12 +1641,11 @@ function drawHomeScreen() {
   textSize(16);
   text("시작", centerX, buttonY);
 
-  // 버튼 그림과 클릭 영역의 위치를 일치시킴
   homeButtonY = buttonY;
   homeButtonW = buttonW;
   homeButtonH = buttonH;
 
-  rectMode(CENTER);
+  rectMode(CORNER);
 }
 
 function drawNavigationButtons() {
