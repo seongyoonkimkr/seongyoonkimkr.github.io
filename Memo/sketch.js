@@ -1594,33 +1594,23 @@ function windowResized() {
 function drawHomeScreen() {
   background("#fafaf8");
 
-  // 노트북 기준 레이아웃
   const centerX = width / 2;
-  const isSmallScreen = width < 700;
+  const small = width < 700 || height < 650;
 
-  // 전체 디자인을 하나의 묶음으로 배치
-  const baseWidth = 1440;
-  const baseHeight = 1000;
-  const scaleFactor = Math.min(width / baseWidth, height / baseHeight);
+  // 화면 크기에 맞춰 배치
+  const s = Math.min(width / 900, height / 700, 1);
+  const titleSize = Math.max(24, 34 * s);
+  const guideSize = Math.max(11, 14 * s);
+  const lineGap = Math.max(18, 25 * s);
 
-  const s = Math.max(0.65, Math.min(1, scaleFactor));
-
-  // 요소별 간격과 크기
-  const titleSize = 34 * s;
-  const subtitleSize = 15 * s;
-  const guideSize = 14 * s;
-  const lineGap = 28 * s;
-  const buttonW = 180 * s;
-  const buttonH = 54 * s;
-
-  // 전체 묶음의 중심 위치
-  const groupCenterY = height * 0.52;
-
-  const titleY = groupCenterY - 155 * s;
+  const titleY = height * 0.25;
   const subtitleY = titleY + 32 * s;
-  const guideY = groupCenterY + 15 * s;
-  const guideH = 100 * s;
-  const buttonY = groupCenterY + 120 * s;
+  const guideY = height * (small ? 0.55 : 0.53);
+  const guideW = Math.min(width - 32, 700);
+  const guideH = small ? 105 : 120;
+  const buttonY = height * (small ? 0.82 : 0.78);
+  const buttonW = 180;
+  const buttonH = 54;
 
   // 제목
   noStroke();
@@ -1633,7 +1623,7 @@ function drawHomeScreen() {
 
   // 소제목
   fill("#77716D");
-  textSize(subtitleSize);
+  textSize(Math.max(12, 15 * s));
   text("건강한 루틴을 만드는 메모", centerX, subtitleY);
 
   // 안내 문구
@@ -1646,20 +1636,21 @@ function drawHomeScreen() {
   textSize(guideSize);
   textLeading(lineGap);
 
-  text(guideText, centerX, guideY, Math.min(width - 40, 700 * s), guideH);
+  // 중요: 텍스트 상자를 화면 중앙 기준으로 배치
+  text(guideText, (width - guideW) / 2, guideY - guideH / 2, guideW, guideH);
 
   // 시작 버튼
   rectMode(CENTER);
   noStroke();
   fill("#231719");
-  rect(centerX, buttonY, buttonW, buttonH, 5 * s);
+  rect(centerX, buttonY, buttonW, buttonH, 5);
 
   fill("#FFFFFF");
   textAlign(CENTER, CENTER);
-  textSize(16 * s);
+  textSize(16);
   text("시작", centerX, buttonY);
 
-  // 클릭 영역과 공유할 버튼 위치
+  // 버튼 그림과 클릭 영역의 위치를 일치시킴
   homeButtonY = buttonY;
   homeButtonW = buttonW;
   homeButtonH = buttonH;
