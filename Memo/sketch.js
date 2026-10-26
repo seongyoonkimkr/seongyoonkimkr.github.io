@@ -1598,7 +1598,7 @@ function drawHomeScreen() {
   const scale = Math.min(width / 700, height / 600, 1);
 
   const titleY = height * 0.2;
-  const subtitleY = titleY + 24 * scale;
+  const subtitleY = titleY + 32 * scale;
   const guideY = height * 0.48;
   const buttonY = height * 0.78;
 
