@@ -213,6 +213,13 @@ function addRoutine() {
     return;
   }
 
+  console.log({
+    memos: memos.length,
+    pendingCount,
+    count,
+    MAX_MEMOS,
+  });
+
   const laneX = getLaneXForText(txt);
 
   if (laneX === null || !Number.isFinite(laneX)) {
