@@ -1620,7 +1620,7 @@ function drawHomeScreen() {
     "1. 메모가 바닥에 닿기 전에 행동을 실천하고 메모를 삭제합니다.\n" +
     "2. 메모를 삭제하기 위해서는 메모에 표시된 패턴을 똑같이 터치해야 합니다.";
 
-  const guideY = height / 2 + 250;
+  const guideY = height * 0.65;
   const guideH = 120;
 
   text(guideText, centerX, guideY, Math.min(width - 48, 700), guideH);
