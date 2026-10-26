@@ -186,27 +186,37 @@ function addRoutine() {
   const count = Math.floor(Number(countInput.value()));
 
   if (!txt) {
+    alert("메모 내용을 입력해 주세요.");
     taskInput.elt.focus();
     return;
   }
 
   if (!Number.isFinite(count) || count < 1) {
+    alert("반복 횟수를 1 이상으로 입력해 주세요.");
     countInput.value("1");
     return;
   }
 
-  if (
-    memos.length + routines.reduce((sum, r) => sum + r.remaining, 0) + count >
-    MAX_MEMOS
-  ) {
-    console.warn("메모 최대 개수에 도달했습니다.");
+  const pendingCount = routines.reduce(
+    (sum, r) => sum + (Number(r.remaining) || 0),
+    0,
+  );
+
+  if (memos.length + pendingCount + count > MAX_MEMOS) {
+    alert(
+      `메모 개수 제한에 도달했어요.\n` +
+        `현재 메모: ${memos.length}개\n` +
+        `예정된 메모: ${pendingCount}개\n` +
+        `추가 요청: ${count}개\n` +
+        `최대: ${MAX_MEMOS}개`,
+    );
     return;
   }
 
   const laneX = getLaneXForText(txt);
 
   if (laneX === null || !Number.isFinite(laneX)) {
-    console.warn("사용 가능한 메모 줄이 없습니다.");
+    alert("메모를 배치할 공간이 없어요.");
     return;
   }
 
@@ -225,15 +235,19 @@ function addRoutine() {
 
   routines.push(routine);
 
-  // 홈 화면에서 추가했더라도 메모 화면으로 전환
   screenMode = "routine";
   updateTopControlsVisibility();
-
   taskInput.value("");
   saveState();
 
-  // 다음 draw()까지 기다리지 않고 즉시 첫 메모 생성
-  spawnMemo(routine);
+  try {
+    spawnMemo(routine);
+  } catch (error) {
+    console.error("메모 생성 실패:", error);
+    alert(
+      "루틴은 추가됐지만 메모 생성에 실패했어요. 콘솔 오류를 확인해 주세요.",
+    );
+  }
 }
 
 function getLaneX(txt = null) {
